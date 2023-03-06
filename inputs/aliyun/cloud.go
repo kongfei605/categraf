@@ -3,6 +3,8 @@ package aliyun
 import (
 	"context"
 	"fmt"
+	polardb "github.com/alibabacloud-go/polardb-20170801/v2/client"
+	kvstore "github.com/alibabacloud-go/r-kvstore-20150101/v2/client"
 	"log"
 	"sync"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"flashcat.cloud/categraf/inputs"
 	"flashcat.cloud/categraf/inputs/aliyun/internal/manager"
 	internalTypes "flashcat.cloud/categraf/inputs/aliyun/internal/types"
+	"flashcat.cloud/categraf/pkg/cache"
 	"flashcat.cloud/categraf/pkg/limiter"
 	"flashcat.cloud/categraf/types"
 )
@@ -35,13 +38,14 @@ type (
 		config.InstanceConfig
 
 		// credentials.Config
-		AccessKeyID     *string `toml:"access_key_id"`
-		AccessKeySecret *string `toml:"access_key_secret"`
-		Region          *string `toml:"region"`
-		Endpoint        *string `toml:"endpoint"`
-
-		// StatisticExclude []string `toml:"statistic_exclude"`
-		// StatisticInclude []string `toml:"statistic_include"`
+		// for cms
+		Credential
+		// kvstore
+		KVCredential Credential `toml:"kvstore"`
+		// polardb
+		PolarCredential Credential `toml:"polar_db"`
+		// rds
+		RdsCredential Credential `toml:"rds"`
 
 		client *manager.Manager `toml:"-"`
 
@@ -67,7 +71,15 @@ type (
 		// 企业云监控配置项
 		// batchSize int `toml:"batchSize"`
 
-		metricCache *metricCache `toml:"-"`
+		metricCache *metricCache      `toml:"-"`
+		metaCache   *cache.BasicCache `toml:"-"`
+	}
+
+	Credential struct {
+		AccessKeyID     *string `toml:"access_key_id"`
+		AccessKeySecret *string `toml:"access_key_secret"`
+		Region          *string `toml:"region"`
+		Endpoint        *string `toml:"endpoint"`
 	}
 
 	MetricFilter struct {
@@ -84,6 +96,12 @@ type (
 		ttl     time.Duration
 		built   time.Time
 		metrics []filteredMetric
+	}
+
+	Meta struct {
+		Name       string `json:"InstanceName"`
+		InstanceID string `json:"InstanceID"`
+		NameSpace  string `json:"namespace"`
 	}
 )
 
@@ -113,6 +131,7 @@ func (ins *Instance) Init() error {
 	if len(ins.Namespaces) == 0 {
 		ins.Namespaces = append(ins.Namespaces, "")
 	}
+	ins.metaCache = cache.NewBasicCache()
 
 	err := ins.initialize()
 	if err != nil {
@@ -131,6 +150,117 @@ func (s *Aliyun) GetInstances() []inputs.Instance {
 }
 
 func (ins *Instance) initialize() error {
+	if ins.AccessKeyID == nil {
+		return fmt.Errorf("%s", "access_key_id is required")
+	}
+	if ins.AccessKeySecret == nil {
+		return fmt.Errorf("%s", "E! access_key_secret is required")
+	}
+	if ins.Region == nil {
+		return fmt.Errorf("%s", "region is required")
+	}
+	if ins.Endpoint == nil {
+		return fmt.Errorf("%s", "endpoint is required")
+	}
+
+	if ins.client == nil {
+		cms := manager.NewCmsClient(*ins.AccessKeyID, *ins.AccessKeySecret, *ins.Region, *ins.Endpoint)
+
+		if ins.KVCredential.AccessKeyID == nil {
+			ins.KVCredential.AccessKeyID = ins.AccessKeyID
+		}
+		if ins.KVCredential.AccessKeySecret == nil {
+			ins.KVCredential.AccessKeySecret = ins.AccessKeySecret
+		}
+		if ins.KVCredential.Region == nil {
+			ins.KVCredential.Region = ins.Region
+		}
+		kv := manager.NewKVClient(*ins.KVCredential.AccessKeyID, *ins.KVCredential.AccessKeySecret, *ins.KVCredential.Region)
+
+		if ins.PolarCredential.AccessKeyID == nil {
+			ins.PolarCredential.AccessKeyID = ins.AccessKeyID
+		}
+		if ins.PolarCredential.AccessKeySecret == nil {
+			ins.PolarCredential.AccessKeySecret = ins.AccessKeySecret
+		}
+		if ins.PolarCredential.Region == nil {
+			ins.PolarCredential.Region = ins.Region
+		}
+		polar := manager.NewPolarDBClient(*ins.PolarCredential.AccessKeyID, *ins.PolarCredential.AccessKeySecret, *ins.PolarCredential.Region)
+
+		if ins.RdsCredential.AccessKeyID == nil {
+			ins.RdsCredential.AccessKeyID = ins.AccessKeyID
+		}
+		if ins.RdsCredential.AccessKeySecret == nil {
+			ins.RdsCredential.AccessKeySecret = ins.AccessKeySecret
+		}
+		if ins.RdsCredential.Region == nil {
+			ins.RdsCredential.Region = ins.Region
+		}
+		rds := manager.NewRdsClient(*ins.RdsCredential.AccessKeyID, *ins.RdsCredential.AccessKeySecret, *ins.RdsCredential.Region)
+
+		m, err := manager.New(*ins.AccessKeyID, *ins.AccessKeySecret, *ins.Endpoint, *ins.Region, cms, kv, polar, rds)
+		if err != nil {
+			return fmt.Errorf("connect to aliyun error, %s", err)
+		} else {
+			ins.client = m
+		}
+	}
+	// put meta to cache
+	if ins.metaCache.Size() == 0 {
+		hosts, err := ins.client.GetEcsHosts()
+		if err != nil {
+			log.Println(err)
+			return err
+		}
+		for _, host := range hosts {
+			k := ins.client.EcsKey(*host.InstanceId)
+			ins.metaCache.Add(k, host)
+		}
+		dbs, err := ins.client.DescribePolarCluster()
+		if err != nil {
+			log.Println(err)
+			return err
+		}
+		for i, db := range dbs {
+			k := ins.client.PolarDBKey(*db.DBClusterId)
+			ins.metaCache.Add(k, dbs[i])
+		}
+
+		kvs, err := ins.client.DescribeKVInfo()
+		if err != nil {
+			log.Println(err)
+			return err
+		}
+		for i, kv := range kvs {
+			k := ins.client.KVKey(*kv.InstanceId)
+			ins.metaCache.Add(k, kvs[i])
+		}
+
+		rds, err := ins.client.DescribeRdsInstances()
+		if err != nil {
+			log.Println(err)
+			return err
+		}
+		for _, db := range rds {
+			k := ins.client.RDSKey(*db.DBInstanceId)
+			tags, err := ins.client.GetRDSTags(*db.DBInstanceId)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			ts := make(map[string]string)
+			for _, tag := range tags {
+				ts[*tag.TagKey] = *tag.TagValue
+			}
+			u := manager.RDSCacheUnit{
+				ID:   *db.DBInstanceId,
+				Name: *db.DBInstanceDescription,
+				Tags: ts,
+			}
+			ins.metaCache.Add(k, &u)
+		}
+	}
 	return nil
 }
 
@@ -155,6 +285,9 @@ func (ins *Instance) getFilteredMetrics() ([]filteredMetric, error) {
 			for _, f := range ins.Filters {
 				if len(f.MetricNames) != 0 {
 					for _, name := range f.MetricNames {
+						if len(name) == 0 {
+							name = metric.MetricName
+						}
 						if isSelected(metric, name, f.Dimensions, f.Namespace) {
 							metrics = append(metrics, internalTypes.Metric{
 								MetricName: name,
@@ -199,33 +332,6 @@ func (ins *Instance) getFilteredMetrics() ([]filteredMetric, error) {
 }
 
 func (ins *Instance) Gather(slist *types.SampleList) {
-	if ins.AccessKeyID == nil {
-		log.Println("E! access_key_id is required")
-		return
-	}
-	if ins.AccessKeySecret == nil {
-		log.Println("E! access_key_secret is required")
-		return
-	}
-	if ins.Region == nil {
-		log.Println("E! region is required")
-		return
-	}
-	if ins.Endpoint == nil {
-		log.Println("E! endpoint is required")
-		return
-	}
-
-	if ins.client == nil {
-		m, err := manager.New(ins.AccessKeyID, ins.AccessKeySecret, ins.Endpoint, ins.Region)
-		if err != nil {
-			log.Println("E! connect to aliyun error,", err)
-			return
-		} else {
-			ins.client = m
-		}
-	}
-
 	ins.updateWindow(time.Now())
 
 	lmtr := limiter.NewRateLimiter(ins.RateLimit, time.Second)
@@ -279,9 +385,10 @@ func (ins *Instance) sendMetrics(metric internalTypes.Metric, wg *sync.WaitGroup
 	}
 	points, err := ins.client.GetMetric(ctx, req)
 	if err != nil {
-		log.Println("E! get metrics error,", err)
+		log.Printf("E! get metrics %s::%s error, %s", metric.Namespace, metric.MetricName, err)
 		return
 	}
+
 	for _, point := range points {
 		if point.Value != nil {
 			tags := ins.makeLabels(point)
@@ -302,8 +409,52 @@ func (ins *Instance) makeLabels(point internalTypes.Point, labels ...map[string]
 			result[k] = v
 		}
 	}
+	addLebel := func(instance interface{}) {
+		if meta, ok := instance.(*cms20190101.DescribeMonitoringAgentHostsResponseBodyHostsHost); ok {
+			result["ident"] = snakeCase(*meta.HostName)
+		}
+
+		if meta, ok := instance.(*polardb.DescribeDBClustersResponseBodyItemsDBCluster); ok {
+			result["status"] = snakeCase(*meta.DBClusterStatus)
+			for _, node := range meta.DBNodes.DBNode {
+				if *node.DBNodeId == point.NodeID {
+					result["role"] = snakeCase(*node.DBNodeRole)
+				}
+			}
+		}
+
+		if meta, ok := instance.(*kvstore.DescribeInstancesResponseBodyInstancesKVStoreInstance); ok {
+			result["name"] = snakeCase(*meta.InstanceName)
+		}
+
+		if meta, ok := instance.(*manager.RDSCacheUnit); ok {
+			result["name"] = snakeCase(meta.Name)
+			for k, v := range meta.Tags {
+				result[k] = v
+			}
+		}
+	}
+	// get meta from cache
+	if instance, ok := ins.metaCache.Get(ins.client.EcsKey(point.InstanceID)); ok {
+		addLebel(instance)
+	} else if instance, ok := ins.metaCache.Get(ins.client.KVKey(point.InstanceID)); ok {
+		addLebel(instance)
+	} else if instance, ok := ins.metaCache.Get(ins.client.PolarDBKey(point.ClusterID)); ok {
+		addLebel(instance)
+	} else if instance, ok := ins.metaCache.Get(ins.client.RDSKey(point.InstanceID)); ok {
+		addLebel(instance)
+	}
+
 	result["user_id"] = point.UserID
-	result["instance_id"] = point.InstanceID
+	if len(point.InstanceID) != 0 {
+		result["instance_id"] = point.InstanceID
+	}
+	if len(point.ClusterID) != 0 {
+		result["cluster_id"] = point.ClusterID
+	}
+	if len(point.NodeID) != 0 {
+		result["node_id"] = point.NodeID
+	}
 	return result
 }
 

@@ -12,3 +12,9 @@ namespace=""
 ratelimit=25
 catch_ttl="1h"
 timeout="5s"
+
+#meta info
+ecs_key="key"
+ecs_secret="secret"
+ecs_region="region"
+ecs_endpoint=""
