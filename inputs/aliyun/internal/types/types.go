@@ -19,6 +19,10 @@ type (
 		Val        *float64 `json:"Value,omitempty"`
 		Value      *float64 `josn:"-"`
 
+		LoadBalancerID   string `json:"loadBalancerId"`
+		ListenerProtocol string `json:"listenerProtocol"`
+		ListenerPort     string `json:"listenerPort"`
+
 		// filter
 		LabelStr   string `json:"-"`
 		Dimensions string `json:"-"`

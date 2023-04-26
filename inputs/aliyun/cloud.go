@@ -455,6 +455,15 @@ func (ins *Instance) makeLabels(point internalTypes.Point, labels ...map[string]
 	if len(point.NodeID) != 0 {
 		result["node_id"] = point.NodeID
 	}
+	if len(point.ListenerPort) != 0 {
+		result["listener_port"] = point.ListenerPort
+	}
+	if len(point.ListenerProtocol) != 0 {
+		result["listener_protocol"] = point.ListenerProtocol
+	}
+	if len(point.LoadBalancerID) != 0 {
+		result["load_balancer_id"] = point.LoadBalancerID
+	}
 	return result
 }
 

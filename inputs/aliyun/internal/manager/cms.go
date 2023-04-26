@@ -89,6 +89,9 @@ func (m *Manager) dataPointConverter(metricName, ns, datapoints string) ([]types
 		r.InstanceID = point.InstanceID
 		r.Namespace = ns
 		r.Timestamp = point.Timestamp
+		r.LoadBalancerID = point.LoadBalancerID
+		r.ListenerProtocol = point.ListenerProtocol
+		r.ListenerPort = point.ListenerPort
 
 		if point.Val != nil {
 			r.MetricName = fmt.Sprintf("%s_%s", snakeCase(metricName), "value")
