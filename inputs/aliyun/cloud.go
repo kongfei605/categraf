@@ -420,6 +420,11 @@ func (ins *Instance) makeLabels(point internalTypes.Point, labels ...map[string]
 				if *node.DBNodeId == point.NodeID {
 					result["role"] = snakeCase(*node.DBNodeRole)
 				}
+
+				// 用户自定义的tag
+				for _, v := range meta.Tags.Tag {
+					result[*v.Key] = *v.Value
+				}
 			}
 		}
 
