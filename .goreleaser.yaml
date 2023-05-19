@@ -92,13 +92,13 @@ archives:
 
 release:
   github:
-    owner: flashcatcloud
+    owner: kongfei605
     name: categraf
   name_template: "v{{ .Version }}"
 
 dockers:
   - image_templates:
-      - flashcatcloud/categraf:{{ .Tag }}-amd64
+      - flashcatcloud/categraf:{{ .Tag }}-amd64-test
     goos: linux
     goarch: amd64
     ids:
@@ -127,7 +127,7 @@ dockers:
       - "--platform=linux/amd64"
 
   - image_templates:
-      - flashcatcloud/categraf:{{ .Tag }}-arm64v8
+      - flashcatcloud/categraf:{{ .Tag }}-arm64v8-test
     goos: linux
     goarch: arm64
     ids:
@@ -156,12 +156,12 @@ dockers:
       - "--platform=linux/arm64/v8"
 docker_manifests:
 
-  - name_template: flashcatcloud/categraf:{{ .Tag }}
+  - name_template: flashcatcloud/categraf:{{ .Tag }}-test
     image_templates:
-      - flashcatcloud/categraf:{{ .Tag }}-amd64
-      - flashcatcloud/categraf:{{ .Tag }}-arm64v8
+      - flashcatcloud/categraf:{{ .Tag }}-amd64-test
+      - flashcatcloud/categraf:{{ .Tag }}-arm64v8-test
 
-  - name_template: flashcatcloud/categraf:latest
+  - name_template: flashcatcloud/categraf-test:latest
     image_templates:
-      - flashcatcloud/categraf:{{ .Tag }}-amd64
-      - flashcatcloud/categraf:{{ .Tag }}-arm64v8
+      - flashcatcloud/categraf:{{ .Tag }}-amd64-test
+      - flashcatcloud/categraf:{{ .Tag }}-arm64v8-test
