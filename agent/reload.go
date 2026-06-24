@@ -47,6 +47,14 @@ func (a *Agent) PrepareReload(newCfg *config.ConfigType) (*ReloadPlan, error) {
 		plan.RestartRequired = append(plan.RestartRequired, "http_provider")
 	}
 
+	if len(plan.RestartRequired) > 0 {
+		return plan, nil
+	}
+
+	if oldCfg != nil && logsConfigEqual(oldCfg, newCfg) {
+		return plan, nil
+	}
+
 	plan.LogsReloaded = true
 	plan.NewLogsAgent = NewLogsAgent(newCfg)
 	if logsConfigured(newCfg) && plan.NewLogsAgent == nil {

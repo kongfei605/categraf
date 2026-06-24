@@ -159,9 +159,9 @@ func BuildHTTPEndpointsWithConfig(endpointPrefix string, intakeTrackType logscon
 	}
 
 	batchWait := time.Duration(logsConfig.BatchWait) * time.Second
-	batchMaxConcurrentSend := logsBatchConcurrence(cfg)
-	batchMaxSize := logsBatchMaxSize(cfg)
-	batchMaxContentSize := logsBatchMaxContentSize(cfg)
+	batchMaxConcurrentSend := coreconfig.BatchConcurrenceFor(cfg)
+	batchMaxSize := coreconfig.BatchMaxSizeFor(cfg)
+	batchMaxContentSize := coreconfig.BatchMaxContentSizeFor(cfg)
 
 	return NewEndpointsWithBatchSettings(main, false, "http", batchWait, batchMaxConcurrentSend, batchMaxSize, batchMaxContentSize), nil
 }
@@ -189,9 +189,9 @@ func NewEndpoints(main logsconfig.Endpoint, useProto bool, typ string, cfg *core
 		Type:        typ,
 
 		BatchWait:              time.Duration(logsConfig.BatchWait) * time.Second,
-		BatchMaxConcurrentSend: logsBatchConcurrence(cfg),
-		BatchMaxSize:           logsBatchMaxSize(cfg),
-		BatchMaxContentSize:    logsBatchMaxContentSize(cfg),
+		BatchMaxConcurrentSend: coreconfig.BatchConcurrenceFor(cfg),
+		BatchMaxSize:           coreconfig.BatchMaxSizeFor(cfg),
+		BatchMaxContentSize:    coreconfig.BatchMaxContentSizeFor(cfg),
 	}
 }
 

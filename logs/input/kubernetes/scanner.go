@@ -22,6 +22,11 @@ type (
 		services *logService.Services
 		actives  map[string]checksum.Checksum
 		mux      sync.Mutex
+
+		runMux  sync.Mutex
+		cancel  context.CancelFunc
+		done    chan struct{}
+		running bool
 	}
 )
 
@@ -32,7 +37,47 @@ func NewScanner(services *logService.Services) *Scanner {
 	}
 }
 
+func (s *Scanner) Start() {
+	s.runMux.Lock()
+	if s.running {
+		s.runMux.Unlock()
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	s.cancel = cancel
+	s.done = done
+	s.running = true
+	s.runMux.Unlock()
+
+	go s.scan(ctx, done)
+}
+
+func (s *Scanner) Stop() {
+	s.runMux.Lock()
+	if !s.running {
+		s.runMux.Unlock()
+		return
+	}
+	cancel := s.cancel
+	done := s.done
+	s.cancel = nil
+	s.done = nil
+	s.running = false
+	s.runMux.Unlock()
+
+	cancel()
+	<-done
+}
+
 func (s *Scanner) Scan() {
+	s.scan(context.Background(), nil)
+}
+
+func (s *Scanner) scan(ctx context.Context, done chan struct{}) {
+	if done != nil {
+		defer close(done)
+	}
 	var (
 		err error
 	)
@@ -43,12 +88,12 @@ func (s *Scanner) Scan() {
 			return
 		}
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case <-ticker.C:
 			pods, err := s.kubelet.GetLocalPodList(ctx)
 			if err != nil {

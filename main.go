@@ -142,39 +142,50 @@ EXIT:
 				log.Println("E! failed to load config:", err)
 				continue
 			}
-			newHostInfo, err := config.LoadHostInfo(newConfig)
-			if err != nil {
-				log.Println("E! failed to load host info:", err)
-				continue
-			}
 			plan, err := ag.PrepareReload(newConfig)
 			if err != nil {
 				log.Println("E! failed to prepare reload:", err)
 				continue
 			}
-
-			if plan.LogsReloaded {
-				if err := ag.StopAgent(agent.LogsAgentName); err != nil {
-					log.Println("E! failed to stop old logs agent:", err)
-					continue
+			if len(plan.RestartRequired) > 0 {
+				for _, name := range plan.RestartRequired {
+					log.Printf("W! %s config changed, restart required to take effect", name)
 				}
+				log.Println("W! configuration reload skipped because restart-required settings changed")
+				continue
+			}
+			if !plan.LogsReloaded {
+				log.Println("I! configuration unchanged, no reload required")
+				continue
+			}
+
+			oldConfig := config.Config
+			if err := ag.StopAgent(agent.LogsAgentName); err != nil {
+				log.Println("E! failed to stop old logs agent:", err)
+				continue
 			}
 
 			config.Config = newConfig
-			config.CommitHostInfo(newHostInfo)
 
-			if plan.LogsReloaded {
-				ag.SetAgent(agent.LogsAgentName, plan.NewLogsAgent)
-				if plan.NewLogsAgent != nil {
-					if err := plan.NewLogsAgent.Start(); err != nil {
-						log.Println("E! failed to start new logs agent:", err)
+			ag.SetAgent(agent.LogsAgentName, plan.NewLogsAgent)
+			if plan.NewLogsAgent != nil {
+				if err := plan.NewLogsAgent.Start(); err != nil {
+					log.Println("E! failed to start new logs agent:", err)
+					if stopErr := plan.NewLogsAgent.Stop(); stopErr != nil {
+						log.Println("E! failed to stop failed logs agent:", stopErr)
 					}
+					config.Config = oldConfig
+					rollbackAgent := agent.NewLogsAgent(oldConfig)
+					ag.SetAgent(agent.LogsAgentName, rollbackAgent)
+					if rollbackAgent != nil {
+						if rollbackErr := rollbackAgent.Start(); rollbackErr != nil {
+							log.Println("E! failed to restore old logs agent:", rollbackErr)
+						}
+					}
+					continue
 				}
-				log.Println("I! logs agent reloaded")
 			}
-			for _, name := range plan.RestartRequired {
-				log.Printf("W! %s config changed, restart required to take effect", name)
-			}
+			log.Println("I! logs agent reloaded")
 		case syscall.SIGPIPE:
 			// https://pkg.go.dev/os/signal#hdr-SIGPIPE
 			// do nothing

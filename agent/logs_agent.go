@@ -55,6 +55,7 @@ type LogsAgent struct {
 	auditor                   auditor.Auditor
 	destinationsCtx           *client.DestinationsContext
 	pipelineProvider          pipeline.Provider
+	serviceInputs             []restart.Restartable
 	inputs                    []restart.Restartable
 	diagnosticMessageReceiver *diagnostic.BufferedMessageReceiver
 	cfg                       *coreconfig.ConfigType
@@ -91,7 +92,7 @@ func NewLogsAgent(cfg *coreconfig.ConfigType) AgentModule {
 	// We pass the health handle to the auditor because it's the end of the pipeline and the most
 	// critical part. Arguably it could also be plugged to the destination.
 	auditorTTL := time.Duration(23) * time.Hour
-	runPath := logsRunPath(cfg)
+	runPath := coreconfig.LogRunPath(cfg)
 	_, err = os.Stat(runPath)
 	if os.IsNotExist(err) {
 		os.MkdirAll(runPath, 0755)
@@ -123,7 +124,7 @@ func NewLogsAgent(cfg *coreconfig.ConfigType) AgentModule {
 	diagnosticMessageReceiver := diagnostic.NewBufferedMessageReceiver()
 
 	// setup the pipeline provider that provides pairs of processor and sender
-	pipelineProvider := pipeline.NewProvider(logsPipelineCount(cfg), auditorIns, diagnosticMessageReceiver, processingRules, endpoints, destinationsCtx)
+	pipelineProvider := pipeline.NewProvider(coreconfig.NumberOfPipelinesFor(cfg), auditorIns, diagnosticMessageReceiver, processingRules, endpoints, destinationsCtx)
 
 	validatePodContainerID := false
 	//
@@ -138,14 +139,16 @@ func NewLogsAgent(cfg *coreconfig.ConfigType) AgentModule {
 
 	// setup the inputs
 	inputs := []restart.Restartable{
-		file.NewScanner(sources, logsOpenFilesLimit(cfg), logsMaxTraverseLimit(cfg), logsMaxDepthLimit(cfg), pipelineProvider, auditorIns,
-			file.DefaultSleepDuration, validatePodContainerID, time.Duration(time.Duration(logsFileScanPeriod(cfg))*time.Second)),
-		listener.NewLauncher(sources, logsFrameSize(cfg), pipelineProvider),
+		file.NewScanner(sources, coreconfig.OpenLogsLimitFor(cfg), coreconfig.MaxTraverseLimitFor(cfg), coreconfig.MaxDepthLimitFor(cfg), pipelineProvider, auditorIns,
+			file.DefaultSleepDuration, validatePodContainerID, time.Duration(time.Duration(coreconfig.FileScanPeriodFor(cfg))*time.Second)),
+		listener.NewLauncher(sources, coreconfig.LogFrameSizeFor(cfg), pipelineProvider),
 		journald.NewLauncher(sources, pipelineProvider, auditorIns),
 	}
-	if logsEnableCollectContainer(cfg) {
+	serviceInputs := []restart.Restartable{}
+	if coreconfig.EnableCollectContainerFor(cfg) {
 		log.Println("collect docker logs...")
 		inputs = append(inputs, container.NewLauncher(containerLaunchables))
+		serviceInputs = append(serviceInputs, kubernetes.NewScanner(services))
 	}
 
 	return &LogsAgent{
@@ -156,6 +159,7 @@ func NewLogsAgent(cfg *coreconfig.ConfigType) AgentModule {
 		auditor:                   auditorIns,
 		destinationsCtx:           destinationsCtx,
 		pipelineProvider:          pipelineProvider,
+		serviceInputs:             serviceInputs,
 		inputs:                    inputs,
 		diagnosticMessageReceiver: diagnosticMessageReceiver,
 		cfg:                       cfg,
@@ -164,7 +168,7 @@ func NewLogsAgent(cfg *coreconfig.ConfigType) AgentModule {
 
 func (la *LogsAgent) Start() error {
 	la.startInner()
-	if logsEnableCollectContainer(la.cfg) {
+	if coreconfig.EnableCollectContainerFor(la.cfg) {
 		// collect container all
 		if util.Debug() {
 			log.Println("Adding ContainerCollectAll source to the Logs Agent")
@@ -176,7 +180,6 @@ func (la *LogsAgent) Start() error {
 				Source:  "docker",
 			})
 		la.sources.AddSource(kubesource)
-		go kubernetes.NewScanner(la.services).Scan()
 	}
 
 	// add source
@@ -206,6 +209,9 @@ func (a *LogsAgent) startInner() {
 	for _, input := range a.inputs {
 		starter.Add(input)
 	}
+	for _, input := range a.serviceInputs {
+		starter.Add(input)
+	}
 	starter.Start()
 }
 
@@ -225,7 +231,12 @@ func (a *LogsAgent) Stop() error {
 	for _, input := range a.inputs {
 		inputs.Add(input)
 	}
+	serviceInputs := restart.NewParallelStopper()
+	for _, input := range a.serviceInputs {
+		serviceInputs.Add(input)
+	}
 	stopper := restart.NewSerialStopper(
+		serviceInputs,
 		inputs,
 		a.pipelineProvider,
 		a.auditor,
