@@ -43,6 +43,13 @@ func (s *LogSources) AddSource(source *LogSource) {
 	}
 }
 
+// Clear clears all sources from the list safely.
+func (s *LogSources) Clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sources = nil
+}
+
 // RemoveSource removes a source.
 func (s *LogSources) RemoveSource(source *LogSource) {
 	s.mu.Lock()

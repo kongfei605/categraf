@@ -68,30 +68,59 @@ func (c *HostInfoCache) SetSN(sn string) {
 	c.Unlock()
 }
 
-func InitHostInfo() error {
+func LoadHostInfo(cfg *ConfigType) (*HostInfoCache, error) {
 	hostname, err := os.Hostname()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var ip string
 	if ip = os.Getenv("HOSTIP"); ip == "" {
-		nip, err := GetOutboundIP()
+		nip, err := GetOutboundIP(cfg)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		ip = fmt.Sprint(nip)
 	}
 	var sn string
 	// allow sn empty
 	sn, _ = GetBiosSn()
-	HostInfo = &HostInfoCache{
+	cache := &HostInfoCache{
 		name: hostname,
 		ip:   fmt.Sprint(ip),
 		sn:   sn,
 	}
 
-	go HostInfo.update()
+	return cache, nil
+}
+
+func CommitHostInfo(newHostInfo *HostInfoCache) {
+	if newHostInfo == nil {
+		return
+	}
+	if HostInfo == nil {
+		HostInfo = newHostInfo
+		go HostInfo.update()
+		return
+	}
+
+	HostInfo.SetHostname(newHostInfo.GetHostname())
+	HostInfo.SetIP(newHostInfo.GetIP())
+	HostInfo.SetSN(newHostInfo.GetSN())
+}
+
+func InitHostInfo(cfgs ...*ConfigType) error {
+	var cfg *ConfigType
+	if len(cfgs) > 0 {
+		cfg = cfgs[0]
+	} else {
+		cfg = Config
+	}
+	newHostInfo, err := LoadHostInfo(cfg)
+	if err != nil {
+		return err
+	}
+	CommitHostInfo(newHostInfo)
 
 	return nil
 }
@@ -107,7 +136,7 @@ func (c *HostInfoCache) update() {
 		}
 		ip := os.Getenv("HOSTIP")
 		if ip == "" {
-			nip, err := GetOutboundIP()
+			nip, err := GetOutboundIP(Config)
 			if err != nil {
 				log.Println("E! failed to get ip:", err)
 			} else {

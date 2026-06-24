@@ -25,30 +25,30 @@ const (
 )
 
 // BuildEndpoints returns the endpoints to send logs.
-func BuildEndpoints(intakeTrackType logsconfig.IntakeTrackType, intakeProtocol logsconfig.IntakeProtocol, intakeOrigin logsconfig.IntakeOrigin) (*logsconfig.Endpoints, error) {
-	return BuildEndpointsWithConfig(httpEndpointPrefix, intakeTrackType, intakeProtocol, intakeOrigin)
+func BuildEndpoints(intakeTrackType logsconfig.IntakeTrackType, intakeProtocol logsconfig.IntakeProtocol, intakeOrigin logsconfig.IntakeOrigin, cfg *coreconfig.ConfigType) (*logsconfig.Endpoints, error) {
+	return BuildEndpointsWithConfig(httpEndpointPrefix, intakeTrackType, intakeProtocol, intakeOrigin, cfg)
 }
 
 // BuildEndpointsWithConfig returns the endpoints to send logs.
-func BuildEndpointsWithConfig(endpointPrefix string, intakeTrackType logsconfig.IntakeTrackType, intakeProtocol logsconfig.IntakeProtocol, intakeOrigin logsconfig.IntakeOrigin) (*logsconfig.Endpoints, error) {
-	logsConfig := coreconfig.Config.Logs
+func BuildEndpointsWithConfig(endpointPrefix string, intakeTrackType logsconfig.IntakeTrackType, intakeProtocol logsconfig.IntakeProtocol, intakeOrigin logsconfig.IntakeOrigin, cfg *coreconfig.ConfigType) (*logsconfig.Endpoints, error) {
+	logsConfig := cfg.Logs
 
 	switch logsConfig.SendType {
 	case "http":
-		return BuildHTTPEndpointsWithConfig(endpointPrefix, intakeTrackType, intakeProtocol, intakeOrigin)
+		return BuildHTTPEndpointsWithConfig(endpointPrefix, intakeTrackType, intakeProtocol, intakeOrigin, cfg)
 	case "tcp":
-		return buildTCPEndpoints(logsConfig)
+		return buildTCPEndpoints(logsConfig, cfg)
 	case "kafka":
-		return buildKafkaEndpoints(logsConfig)
+		return buildKafkaEndpoints(logsConfig, cfg)
 
 	}
-	return buildTCPEndpoints(logsConfig)
+	return buildTCPEndpoints(logsConfig, cfg)
 }
 
-func buildKafkaEndpoints(logsConfig coreconfig.Logs) (*logsconfig.Endpoints, error) {
+func buildKafkaEndpoints(logsConfig coreconfig.Logs, cfg *coreconfig.ConfigType) (*logsconfig.Endpoints, error) {
 	// return nil, nil
 	// Provide default values for legacy settings when the configuration key does not exist
-	defaultTLS := coreconfig.Config.Logs.SendWithTLS
+	defaultTLS := cfg.Logs.SendWithTLS
 
 	main := logsconfig.Endpoint{
 		APIKey:                  strings.TrimSpace(logsConfig.APIKey),
@@ -86,10 +86,10 @@ func buildKafkaEndpoints(logsConfig coreconfig.Logs) (*logsconfig.Endpoints, err
 	} else {
 		return nil, fmt.Errorf("empty send_to is not allowed when send_type is kafka")
 	}
-	return NewEndpoints(main, false, "kafka"), nil
+	return NewEndpoints(main, false, "kafka", cfg), nil
 }
 
-func buildTCPEndpoints(logsConfig coreconfig.Logs) (*logsconfig.Endpoints, error) {
+func buildTCPEndpoints(logsConfig coreconfig.Logs, cfg *coreconfig.ConfigType) (*logsconfig.Endpoints, error) {
 	main := logsconfig.Endpoint{
 		APIKey:                  logsConfig.APIKey,
 		ProxyAddress:            "",
@@ -110,19 +110,19 @@ func buildTCPEndpoints(logsConfig coreconfig.Logs) (*logsconfig.Endpoints, error
 		main.UseSSL = logsConfig.SendWithTLS
 	}
 
-	return NewEndpoints(main, false, "tcp"), nil
+	return NewEndpoints(main, false, "tcp", cfg), nil
 }
 
 // BuildHTTPEndpoints returns the HTTP endpoints to send logs to.
-func BuildHTTPEndpoints(intakeTrackType logsconfig.IntakeTrackType, intakeProtocol logsconfig.IntakeProtocol, intakeOrigin logsconfig.IntakeOrigin) (*logsconfig.Endpoints, error) {
-	return BuildHTTPEndpointsWithConfig(httpEndpointPrefix, intakeTrackType, intakeProtocol, intakeOrigin)
+func BuildHTTPEndpoints(intakeTrackType logsconfig.IntakeTrackType, intakeProtocol logsconfig.IntakeProtocol, intakeOrigin logsconfig.IntakeOrigin, cfg *coreconfig.ConfigType) (*logsconfig.Endpoints, error) {
+	return BuildHTTPEndpointsWithConfig(httpEndpointPrefix, intakeTrackType, intakeProtocol, intakeOrigin, cfg)
 }
 
 // BuildHTTPEndpointsWithConfig uses two arguments that instructs it how to access configuration parameters, then returns the HTTP endpoints to send logs to. This function is able to default to the 'classic' BuildHTTPEndpoints() w ldHTTPEndpointsWithConfigdefault variables logsConfigDefaultKeys and httpEndpointPrefix
-func BuildHTTPEndpointsWithConfig(endpointPrefix string, intakeTrackType logsconfig.IntakeTrackType, intakeProtocol logsconfig.IntakeProtocol, intakeOrigin logsconfig.IntakeOrigin) (*logsconfig.Endpoints, error) {
+func BuildHTTPEndpointsWithConfig(endpointPrefix string, intakeTrackType logsconfig.IntakeTrackType, intakeProtocol logsconfig.IntakeProtocol, intakeOrigin logsconfig.IntakeOrigin, cfg *coreconfig.ConfigType) (*logsconfig.Endpoints, error) {
 	// Provide default values for legacy settings when the configuration key does not exist
-	logsConfig := coreconfig.Config.Logs
-	defaultTLS := coreconfig.Config.Logs.SendWithTLS
+	logsConfig := cfg.Logs
+	defaultTLS := cfg.Logs.SendWithTLS
 
 	main := logsconfig.Endpoint{
 		APIKey:                  strings.TrimSpace(logsConfig.APIKey),
@@ -159,9 +159,9 @@ func BuildHTTPEndpointsWithConfig(endpointPrefix string, intakeTrackType logscon
 	}
 
 	batchWait := time.Duration(logsConfig.BatchWait) * time.Second
-	batchMaxConcurrentSend := coreconfig.BatchConcurrence()
-	batchMaxSize := coreconfig.BatchMaxSize()
-	batchMaxContentSize := coreconfig.BatchMaxContentSize()
+	batchMaxConcurrentSend := logsBatchConcurrence(cfg)
+	batchMaxSize := logsBatchMaxSize(cfg)
+	batchMaxContentSize := logsBatchMaxContentSize(cfg)
 
 	return NewEndpointsWithBatchSettings(main, false, "http", batchWait, batchMaxConcurrentSend, batchMaxSize, batchMaxContentSize), nil
 }
@@ -180,8 +180,8 @@ func parseAddress(address string) (string, int, error) {
 }
 
 // NewEndpoints returns a new endpoints composite with default batching settings
-func NewEndpoints(main logsconfig.Endpoint, useProto bool, typ string) *logsconfig.Endpoints {
-	logsConfig := coreconfig.Config.Logs
+func NewEndpoints(main logsconfig.Endpoint, useProto bool, typ string, cfg *coreconfig.ConfigType) *logsconfig.Endpoints {
+	logsConfig := cfg.Logs
 	return &logsconfig.Endpoints{
 		Main:        main,
 		Additionals: nil,
@@ -189,9 +189,9 @@ func NewEndpoints(main logsconfig.Endpoint, useProto bool, typ string) *logsconf
 		Type:        typ,
 
 		BatchWait:              time.Duration(logsConfig.BatchWait) * time.Second,
-		BatchMaxConcurrentSend: coreconfig.BatchConcurrence(),
-		BatchMaxSize:           coreconfig.BatchMaxSize(),
-		BatchMaxContentSize:    coreconfig.BatchMaxContentSize(),
+		BatchMaxConcurrentSend: logsBatchConcurrence(cfg),
+		BatchMaxSize:           logsBatchMaxSize(cfg),
+		BatchMaxContentSize:    logsBatchMaxContentSize(cfg),
 	}
 }
 

@@ -370,7 +370,7 @@ func crossIPsWithPorts(addrs []containers.NetworkAddress, ports []nat.Port) []co
 	return res
 }
 func GetDockerHostIPs() []string {
-	ip, err := coreconfig.GetOutboundIP()
+	ip, err := coreconfig.GetOutboundIP(coreconfig.Config)
 	if err != nil {
 		return []string{coreconfig.Config.GetHostname()}
 	}

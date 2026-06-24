@@ -15,3 +15,7 @@ func (a *IbexAgent) Start() error {
 func (a *IbexAgent) Stop() error {
 	return nil
 }
+
+func (a *IbexAgent) Name() string {
+	return IbexAgentName
+}

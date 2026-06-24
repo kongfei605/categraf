@@ -135,7 +135,46 @@ EXIT:
 			break EXIT
 		case syscall.SIGHUP:
 			log.Println("I! received signal:", sig.String())
-			ag.Reload()
+
+			log.Println("I! loading configuration...")
+			newConfig, err := config.LoadConfig(*configDir, *debugLevel, *debugMode, *testMode, *interval, *inputFilters)
+			if err != nil {
+				log.Println("E! failed to load config:", err)
+				continue
+			}
+			newHostInfo, err := config.LoadHostInfo(newConfig)
+			if err != nil {
+				log.Println("E! failed to load host info:", err)
+				continue
+			}
+			plan, err := ag.PrepareReload(newConfig)
+			if err != nil {
+				log.Println("E! failed to prepare reload:", err)
+				continue
+			}
+
+			if plan.LogsReloaded {
+				if err := ag.StopAgent(agent.LogsAgentName); err != nil {
+					log.Println("E! failed to stop old logs agent:", err)
+					continue
+				}
+			}
+
+			config.Config = newConfig
+			config.CommitHostInfo(newHostInfo)
+
+			if plan.LogsReloaded {
+				ag.SetAgent(agent.LogsAgentName, plan.NewLogsAgent)
+				if plan.NewLogsAgent != nil {
+					if err := plan.NewLogsAgent.Start(); err != nil {
+						log.Println("E! failed to start new logs agent:", err)
+					}
+				}
+				log.Println("I! logs agent reloaded")
+			}
+			for _, name := range plan.RestartRequired {
+				log.Printf("W! %s config changed, restart required to take effect", name)
+			}
 		case syscall.SIGPIPE:
 			// https://pkg.go.dev/os/signal#hdr-SIGPIPE
 			// do nothing

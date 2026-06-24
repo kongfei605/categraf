@@ -57,24 +57,25 @@ type LogsAgent struct {
 	pipelineProvider          pipeline.Provider
 	inputs                    []restart.Restartable
 	diagnosticMessageReceiver *diagnostic.BufferedMessageReceiver
+	cfg                       *coreconfig.ConfigType
 }
 
 // NewLogsAgent returns a new Logs LogsAgent
-func NewLogsAgent() AgentModule {
-	if coreconfig.Config == nil ||
-		!coreconfig.Config.Logs.Enable ||
-		(len(coreconfig.Config.Logs.Items) == 0 && coreconfig.Config.Logs.EnableCollectContainer == false) {
+func NewLogsAgent(cfg *coreconfig.ConfigType) AgentModule {
+	if cfg == nil ||
+		!cfg.Logs.Enable ||
+		(len(cfg.Logs.Items) == 0 && cfg.Logs.EnableCollectContainer == false) {
 		return nil
 	}
 
-	endpoints, err := BuildEndpoints(intakeTrackType, AgentJSONIntakeProtocol, logsconfig.DefaultIntakeOrigin)
+	endpoints, err := BuildEndpoints(intakeTrackType, AgentJSONIntakeProtocol, logsconfig.DefaultIntakeOrigin, cfg)
 	if err != nil {
 		message := fmt.Sprintf("Invalid endpoints: %v", err)
 		status.AddGlobalError("invalid endpoints", message)
 		log.Println("E!", errors.New(message))
 		return nil
 	}
-	processingRules, err := GlobalProcessingRules()
+	processingRules, err := GlobalProcessingRules(cfg)
 	if err != nil {
 		message := fmt.Sprintf("Invalid processing rules: %v", err)
 		status.AddGlobalError(invalidProcessingRules, message)
@@ -90,11 +91,12 @@ func NewLogsAgent() AgentModule {
 	// We pass the health handle to the auditor because it's the end of the pipeline and the most
 	// critical part. Arguably it could also be plugged to the destination.
 	auditorTTL := time.Duration(23) * time.Hour
-	_, err = os.Stat(coreconfig.GetLogRunPath())
+	runPath := logsRunPath(cfg)
+	_, err = os.Stat(runPath)
 	if os.IsNotExist(err) {
-		os.MkdirAll(coreconfig.GetLogRunPath(), 0755)
+		os.MkdirAll(runPath, 0755)
 	}
-	auditorIns := auditor.New(coreconfig.GetLogRunPath(), auditor.DefaultRegistryFilename, auditorTTL)
+	auditorIns := auditor.New(runPath, auditor.DefaultRegistryFilename, auditorTTL)
 
 	auditor.RegisterCollector(auditorIns, func() []auditor.SourceMeta {
 		srcs := sources.GetSources()
@@ -121,27 +123,27 @@ func NewLogsAgent() AgentModule {
 	diagnosticMessageReceiver := diagnostic.NewBufferedMessageReceiver()
 
 	// setup the pipeline provider that provides pairs of processor and sender
-	pipelineProvider := pipeline.NewProvider(coreconfig.NumberOfPipelines(), auditorIns, diagnosticMessageReceiver, processingRules, endpoints, destinationsCtx)
+	pipelineProvider := pipeline.NewProvider(logsPipelineCount(cfg), auditorIns, diagnosticMessageReceiver, processingRules, endpoints, destinationsCtx)
 
-	validatePodContainerID := coreconfig.ValidatePodContainerID()
+	validatePodContainerID := false
 	//
 	containerLaunchables := []container.Launchable{
 		{
 			IsAvailable: kubernetes.IsAvailable,
 			Launcher: func() restart.Restartable {
-				return kubernetes.NewLauncher(sources, services, coreconfig.GetContainerCollectAll())
+				return kubernetes.NewLauncher(sources, services, cfg.Logs.CollectContainerAll)
 			},
 		},
 	}
 
 	// setup the inputs
 	inputs := []restart.Restartable{
-		file.NewScanner(sources, coreconfig.OpenLogsLimit(), coreconfig.MaxTraverseLimit(), coreconfig.MaxDepthLimit(), pipelineProvider, auditorIns,
-			file.DefaultSleepDuration, validatePodContainerID, time.Duration(time.Duration(coreconfig.FileScanPeriod())*time.Second)),
-		listener.NewLauncher(sources, coreconfig.LogFrameSize(), pipelineProvider),
+		file.NewScanner(sources, logsOpenFilesLimit(cfg), logsMaxTraverseLimit(cfg), logsMaxDepthLimit(cfg), pipelineProvider, auditorIns,
+			file.DefaultSleepDuration, validatePodContainerID, time.Duration(time.Duration(logsFileScanPeriod(cfg))*time.Second)),
+		listener.NewLauncher(sources, logsFrameSize(cfg), pipelineProvider),
 		journald.NewLauncher(sources, pipelineProvider, auditorIns),
 	}
-	if coreconfig.EnableCollectContainer() {
+	if logsEnableCollectContainer(cfg) {
 		log.Println("collect docker logs...")
 		inputs = append(inputs, container.NewLauncher(containerLaunchables))
 	}
@@ -156,12 +158,13 @@ func NewLogsAgent() AgentModule {
 		pipelineProvider:          pipelineProvider,
 		inputs:                    inputs,
 		diagnosticMessageReceiver: diagnosticMessageReceiver,
+		cfg:                       cfg,
 	}
 }
 
 func (la *LogsAgent) Start() error {
 	la.startInner()
-	if coreconfig.EnableCollectContainer() {
+	if logsEnableCollectContainer(la.cfg) {
 		// collect container all
 		if util.Debug() {
 			log.Println("Adding ContainerCollectAll source to the Logs Agent")
@@ -177,7 +180,7 @@ func (la *LogsAgent) Start() error {
 	}
 
 	// add source
-	for _, c := range coreconfig.Config.Logs.Items {
+	for _, c := range la.cfg.Logs.Items {
 		if c == nil {
 			continue
 		}
@@ -190,6 +193,10 @@ func (la *LogsAgent) Start() error {
 		la.sources.AddSource(source)
 	}
 	return nil
+}
+
+func (la *LogsAgent) Name() string {
+	return LogsAgentName
 }
 
 // startInner starts all the elements of the data pipeline
@@ -210,6 +217,9 @@ func (a *LogsAgent) Flush(ctx context.Context) {
 // Stop stops all the elements of the data pipeline
 // in the right order to prevent data loss
 func (a *LogsAgent) Stop() error {
+	if a.sources != nil {
+		a.sources.Clear()
+	}
 	auditor.UnregisterCollector(a.auditor)
 	inputs := restart.NewParallelStopper()
 	for _, input := range a.inputs {
@@ -256,8 +266,8 @@ func (a *LogsAgent) Stop() error {
 }
 
 // GlobalProcessingRules returns the global processing rules to apply to all logs.
-func GlobalProcessingRules() ([]*logsconfig.ProcessingRule, error) {
-	rules := coreconfig.Config.Logs.GlobalProcessingRules
+func GlobalProcessingRules(cfg *coreconfig.ConfigType) ([]*logsconfig.ProcessingRule, error) {
+	rules := cfg.Logs.GlobalProcessingRules
 	err := logsconfig.ValidateProcessingRules(rules)
 	if err != nil {
 		return nil, err

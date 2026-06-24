@@ -243,6 +243,10 @@ func (ma *MetricsAgent) Stop() error {
 	return nil
 }
 
+func (ma *MetricsAgent) Name() string {
+	return MetricsAgentName
+}
+
 func (ma *MetricsAgent) RegisterInput(name string, configs []cfg.ConfigWithFormat) {
 	typ, inputKey := inputs.ParseInputName(name)
 	if !ma.FilterPass(inputKey) {

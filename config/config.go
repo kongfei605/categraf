@@ -128,13 +128,13 @@ type ConfigType struct {
 
 var Config *ConfigType
 
-func InitConfig(configDir string, debugLevel int, debugMode, testMode bool, interval int64, inputFilters string) error {
+func LoadConfig(configDir string, debugLevel int, debugMode, testMode bool, interval int64, inputFilters string) (*ConfigType, error) {
 	configFile := path.Join(configDir, "config.toml")
 	if !file.IsExist(configFile) {
-		return fmt.Errorf("configuration file(%s) not found", configFile)
+		return nil, fmt.Errorf("configuration file(%s) not found", configFile)
 	}
 
-	Config = &ConfigType{
+	newConfig := &ConfigType{
 		ConfigDir:    configDir,
 		DebugMode:    debugMode,
 		DebugLevel:   debugLevel,
@@ -142,31 +142,49 @@ func InitConfig(configDir string, debugLevel int, debugMode, testMode bool, inte
 		InputFilters: inputFilters,
 	}
 
-	if err := cfg.LoadConfigByDir(configDir, Config); err != nil {
-		return fmt.Errorf("failed to load configs of dir: %s err:%s", configDir, err)
+	if err := cfg.LoadConfigByDir(configDir, newConfig); err != nil {
+		return nil, fmt.Errorf("failed to load configs of dir: %s err:%s", configDir, err)
 	}
 
 	if interval > 0 {
-		Config.Global.Interval = Duration(time.Duration(interval) * time.Second)
+		newConfig.Global.Interval = Duration(time.Duration(interval) * time.Second)
 	}
 
-	if Config.Global.Precision == "" {
-		Config.Global.Precision = "ms"
+	if newConfig.Global.Precision == "" {
+		newConfig.Global.Precision = "ms"
 	}
 
-	if Config.WriterOpt.ChanSize <= 0 {
-		Config.WriterOpt.ChanSize = 1000000
+	if newConfig.WriterOpt.ChanSize <= 0 {
+		newConfig.WriterOpt.ChanSize = 1000000
 	}
 
-	if Config.WriterOpt.Batch <= 0 {
-		Config.WriterOpt.Batch = 1000
+	if newConfig.WriterOpt.Batch <= 0 {
+		newConfig.WriterOpt.Batch = 1000
 	}
 
-	Config.Global.Hostname = strings.TrimSpace(Config.Global.Hostname)
+	newConfig.Global.Hostname = strings.TrimSpace(newConfig.Global.Hostname)
 
-	if err := InitHostInfo(); err != nil {
+	// If using test mode, the logs are output to standard output for easy viewing
+	if testMode {
+		newConfig.Log.FileName = "stdout"
+	}
+
+	return newConfig, nil
+}
+
+func InitConfig(configDir string, debugLevel int, debugMode, testMode bool, interval int64, inputFilters string) error {
+	newConfig, err := LoadConfig(configDir, debugLevel, debugMode, testMode, interval, inputFilters)
+	if err != nil {
 		return err
 	}
+
+	newHostInfo, err := LoadHostInfo(newConfig)
+	if err != nil {
+		return err
+	}
+
+	Config = newConfig
+	CommitHostInfo(newHostInfo)
 
 	if Config.Global.PrintConfigs {
 		json := jsoniter.ConfigCompatibleWithStandardLibrary
@@ -176,11 +194,6 @@ func InitConfig(configDir string, debugLevel int, debugMode, testMode bool, inte
 		} else {
 			fmt.Println(string(bs))
 		}
-	}
-
-	// If using test mode, the logs are output to standard output for easy viewing
-	if testMode {
-		Config.Log.FileName = "stdout"
 	}
 
 	return nil
@@ -264,32 +277,38 @@ func getLocalIP() (net.IP, error) {
 }
 
 // Get preferred outbound ip of this machine
-func GetOutboundIP() (net.IP, error) {
+func GetOutboundIP(cfg *ConfigType) (net.IP, error) {
+	if cfg == nil {
+		cfg = Config
+	}
+
 	addr := defaultProbeAddr
-	if len(Config.Writers) == 0 {
+	if cfg == nil || len(cfg.Writers) == 0 {
 		log.Printf("E! writers is not configured, use %s as default probe address", defaultProbeAddr)
 	}
-	for _, v := range Config.Writers {
-		if len(v.Url) != 0 {
+	if cfg != nil {
+		for _, v := range cfg.Writers {
+			if len(v.Url) == 0 {
+				continue
+			}
 			u, err := url.Parse(v.Url)
 			if err != nil {
 				log.Printf("W! parse writers url %s error %s", v.Url, err)
 				continue
-			} else {
-				if strings.Contains(u.Host, "localhost") || strings.Contains(u.Host, "127.0.0.1") {
-					continue
-				}
-				if len(u.Port()) == 0 {
-					if u.Scheme == "http" {
-						u.Host = u.Host + ":80"
-					}
-					if u.Scheme == "https" {
-						u.Host = u.Host + ":443"
-					}
-				}
-				addr = u.Host
-				break
 			}
+			if strings.Contains(u.Host, "localhost") || strings.Contains(u.Host, "127.0.0.1") {
+				continue
+			}
+			if len(u.Port()) == 0 {
+				if u.Scheme == "http" {
+					u.Host = u.Host + ":80"
+				}
+				if u.Scheme == "https" {
+					u.Host = u.Host + ":443"
+				}
+			}
+			addr = u.Host
+			break
 		}
 	}
 

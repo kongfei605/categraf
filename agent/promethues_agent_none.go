@@ -16,3 +16,7 @@ func (pa *PrometheusAgent) Start() error {
 func (pa *PrometheusAgent) Stop() error {
 	return nil
 }
+
+func (pa *PrometheusAgent) Name() string {
+	return PrometheusAgentName
+}

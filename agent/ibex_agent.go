@@ -40,3 +40,7 @@ func (ia *IbexAgent) Stop() error {
 	ibex.Stop()
 	return nil
 }
+
+func (ia *IbexAgent) Name() string {
+	return IbexAgentName
+}

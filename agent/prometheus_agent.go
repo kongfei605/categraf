@@ -33,3 +33,7 @@ func (pa *PrometheusAgent) Stop() error {
 	log.Println("I! prometheus scraping stopped!")
 	return nil
 }
+
+func (pa *PrometheusAgent) Name() string {
+	return PrometheusAgentName
+}

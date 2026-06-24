@@ -2,10 +2,12 @@
 
 package agent
 
+import coreconfig "flashcat.cloud/categraf/config"
+
 type LogsAgent struct {
 }
 
-func NewLogsAgent() AgentModule {
+func NewLogsAgent(cfg *coreconfig.ConfigType) AgentModule {
 	return nil
 }
 
@@ -15,4 +17,8 @@ func (la *LogsAgent) Start() error {
 
 func (la *LogsAgent) Stop() error {
 	return nil
+}
+
+func (la *LogsAgent) Name() string {
+	return LogsAgentName
 }
