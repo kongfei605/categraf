@@ -23,7 +23,7 @@ Categraf 已在正式模式或仅带 `--debug` 的模式下运行，后端查询
 - `--test` 不会写入后端；只有正式模式或不带 `--test` 的 `--debug` 模式产生的新样本，才可能被 Dashboard 查询到。
 - 夜莺与 Grafana Dashboard 都是 JSON，但格式不能直接混用：夜莺通常使用 `dashboard.json`，Grafana 通常使用 `dashboard_grafana.json` 或 `*_grafana.json`。
 - `label_values(metric, label)` 是 Dashboard 变量查询语法，不是标准 PromQL；变量为空时，要分别验证裸指标和标签是否存在。
-- Dashboard 依赖的是后端真实标签，不是配置中“以为会有”的标签。`ident`、`instance`、`server`、`db` 和 `agent_hostname` 不是同一个概念。
+- Dashboard 依赖的是后端真实标签，不是配置中“以为会有”的标签。Categraf 使用 `agent_hostname` 标识自身；经过夜莺接入时，只有指标不存在非空 `ident`，夜莺才会把它重命名为 `ident`。已有非空 `ident` 时显式值优先，`agent_hostname` 保留。
 - 变量可以级联。PostgreSQL 大盘中 `db` 依赖 `$server`，上游变量为空或选错后，下游变量和所有面板都会空。
 - `rate()`、`increase()` 需要范围内有足够样本。裸 Gauge 有值，不代表过短窗口内的区间查询一定有结果。
 - 指标前缀、relabel、插件开关、Categraf 版本和 Dashboard 版本不一致，都可能让面板查询旧名称或不存在的指标。
@@ -237,7 +237,9 @@ PromQL 查看最新样本距当前多久：
 time() - timestamp(postgresql_up)
 ```
 
-如果结果远大于采集周期，说明序列已经陈旧；如果是很大的负数，则可能存在未来时间戳。
+这是 instant query，其中的 `postgresql_up` 是 instant vector selector，受查询后端 lookback delta 限制。Prometheus 默认 lookback 为 5 分钟，但可以配置，Prometheus 兼容后端也可能采用不同值。只有最近样本仍在 lookback 范围内时，上式才能返回陈旧秒数；样本一旦超出 lookback，selector 会返回空向量，整个表达式也为空，不会显示一个很大的陈旧时长。
+
+如果结果远大于采集周期，说明在当前 lookback 范围内已经出现明显延迟；如果是很大的负数，则可能存在未来时间戳。如果表达式为空，应扩大查询时间范围，使用 range query 查看 `postgresql_up` 的历史样本及其时间戳，例如依次检查最近 1 小时、6 小时和 1 天，不能把空结果解释为“从未写入”。
 
 时间范围扩大后有数据，不代表问题已经解决。应继续确认为什么最新样本没有持续写入，以及时钟是否同步。
 
@@ -250,7 +252,17 @@ Categraf 常见标签来源包括：
 - `[[instances]].labels`：实例自定义标签，例如 `instance`、`cluster`、`env`；
 - 插件自动标签：例如 PostgreSQL 的 `server`、`db`；
 - relabel：可能新增、删除或改写标签；
-- 后端接入层：某些平台可能补充 `ident`、业务组或租户相关标签。
+- 后端接入层：指标不存在非空 `ident` 时，夜莺会把 Categraf 的 `agent_hostname` 重命名为 `ident`；已有非空 `ident` 时显式值优先，并保留 `agent_hostname`。其他平台也可能补充或转换标签。
+
+这意味着同一份 Categraf 配置，仅仅因为写入路径不同，Dashboard 可用的主机标签就可能不同：
+
+| 写入路径 | 后端主机标识标签 | Dashboard 变量应优先使用 |
+| --- | --- | --- |
+| Categraf -> 夜莺 -> TSDB，原指标没有非空 `ident` | `agent_hostname` 被重命名为 `ident` | `ident` |
+| Categraf -> 夜莺 -> TSDB，原指标已有非空 `ident` | 显式 `ident` 与 `agent_hostname` 都保留 | `ident`，必要时同时筛选 `agent_hostname` |
+| Categraf -> 其他 TSDB | 通常为 `agent_hostname` | `agent_hostname`，或显式补充 Dashboard 需要的标签 |
+
+不要根据 `--test` 输出直接断定后端也存在 `agent_hostname`。`--test` 只出现 `agent_hostname`、没有非空 `ident` 时，经过夜莺写入后要改查 `ident`；如果 test 已有非空 `ident`，夜莺会保留显式 `ident` 和 `agent_hostname`。
 
 不要靠配置文件推测最终结果，直接从后端列出标签：
 
@@ -278,8 +290,8 @@ count by (agent_hostname, ident, instance, address) (redis_uptime_in_seconds)
 
 | 标签 | 常见来源 | 典型用途 |
 | --- | --- | --- |
-| `agent_hostname` | Categraf 自动附加 | 区分采集 Agent |
-| `ident` | 平台接入或特定配置语义 | 夜莺主机/对象标识相关大盘 |
+| `agent_hostname` | Categraf 自动附加；直写其他 TSDB 时通常保留 | 区分采集 Agent |
+| `ident` | 显式标签优先；不存在非空值时，夜莺由 `agent_hostname` 重命名得到 | 夜莺主机/对象标识相关大盘 |
 | `instance` | 用户在 `labels` 中显式设置，或目标生态产生 | 稳定业务实例标识 |
 | `server` | PostgreSQL 等插件自动生成，可能受 `outputaddress` 影响 | 区分数据库连接目标 |
 | `address` | MySQL、Redis 等插件连接地址标签 | 显示真实目标地址 |
@@ -294,6 +306,8 @@ labels = { instance = "postgres-main", env = "prod" }
 ```
 
 这里 `outputaddress` 主要影响插件输出的 `server` 标签；`labels.instance` 是另一个独立标签。大盘使用哪个，就必须保证后端有哪个。
+
+对于主机指标，标签还取决于写入路径。例如 Categraf 只输出 `system_load1{agent_hostname="monitor-01"}`、没有非空 `ident` 时，经过夜莺接入后通常查询 `system_load1{ident="monitor-01"}`，直写 VictoriaMetrics 等 TSDB 时则通常查询 `system_load1{agent_hostname="monitor-01"}`。如果原指标已有非空 `ident`，夜莺不会用 `agent_hostname` 覆盖它，并会保留 `agent_hostname`。显式配置的业务 `instance` 是另一个标签，不应与这次重命名混为一谈。
 
 不要直接把 Dashboard 中所有 `server` 批量替换成 `instance`。先确认每个指标族是否都包含目标标签，再决定统一标签策略。
 
@@ -423,7 +437,7 @@ increase(postgresql_xact_commit{server="postgres-main",db="app"}[5m])
 postgresql_blks_hit / (postgresql_blks_hit + postgresql_blks_read)
 ```
 
-分别查询分子和分母。某一边缺失、标签集合不同或分母为零，都可能导致最终结果为空或 NaN。
+分别查询分子和分母。某一边缺失，或者两边标签无法匹配时，二元运算找不到配对序列，结果是空向量。只有两边成功匹配且分母为零时才进入浮点除零语义：非零值除以零得到 `+Inf` 或 `-Inf`，`0 / 0` 得到 `NaN`。
 
 ## 12. `rate()` 和 `increase()` 为什么比裸指标更容易空
 
@@ -468,18 +482,19 @@ rg -o '"expr"\s*:\s*"[^"]+' inputs/postgresql/dashboard_grafana.json | head -n 6
 
 推荐从与运行二进制同一版本或同一发布包取得 Dashboard。只升级大盘、不升级采集器，或者只升级采集器、继续使用很旧的大盘，都可能产生兼容问题。
 
-## 14. 区分 No data、查询错误、零值和 NaN
+## 14. 区分 No data、查询错误、零值、NaN 和 Inf
 
-面板看起来“空”，实际可能是四种不同状态：
+面板看起来“空”，实际可能是几种不同状态：
 
 | 状态 | 含义 | 排查方向 |
 | --- | --- | --- |
 | No data / 空 vector | PromQL 没返回序列 | 数据源、时间、标签、指标名 |
 | Query error | PromQL、数据源或后端报错 | 错误详情、API 响应 |
 | 值为 0 | 有序列且业务值确实为零 | 面板阈值、单位、业务语义 |
-| NaN / Inf | 除零、缺失分子分母或计算异常 | 拆分公式、标签匹配 |
+| NaN | 两个已匹配的值执行 `0 / 0`，或其他明确产生 NaN 的计算 | 分别检查分子和分母的值 |
+| `+Inf` / `-Inf` | 已匹配的非零值除以零 | 检查分母为什么为零及符号 |
 
-不要把零值当成无数据。也不要用 `or vector(0)` 过早填补空结果，这会把“采集断了”和“业务值为零”混在一起。
+缺失序列和标签无法匹配属于空向量，不属于 `NaN`。不要把零值当成无数据，也不要用 `or vector(0)` 过早填补空结果，这会把“采集断了”和“业务值为零”混在一起。
 
 Grafana 使用 Query inspector 查看实际请求、展开后的 PromQL、返回 JSON 和耗时。夜莺可以使用面板编辑/查询预览或数据源查询页面查看原始结果，具体入口随版本可能不同。
 
@@ -659,7 +674,9 @@ count_over_time(postgresql_xact_commit{server="<ACTUAL_SERVER>",db="<ACTUAL_DB>"
 | 裸指标有，面板无 | 标签筛选、指标名、range 或 transform | 逐层拆 PromQL |
 | 一组高级面板空 | 插件开关、数据库权限或指标族未采集 | test、日志、插件配置 |
 | Gauge 有，rate 空 | 窗口内样本不足 | 检查采集周期和 range |
-| 结果为 NaN | 分母为零或向量无法匹配 | 拆分公式、检查 labels |
+| 结果为空向量 | 序列缺失或左右向量标签无法匹配 | 拆分公式、检查 labels 和 vector matching |
+| 结果为 NaN | 两边匹配且发生 `0 / 0` | 检查分子、分母是否都为零 |
+| 结果为 `+Inf` / `-Inf` | 两边匹配且非零值除以零 | 检查分母为何为零 |
 | Query 有结果，图不显示 | transform、字段或计算设置 | 复制简化面板 |
 | 一台实例正常，另一台空 | 标签值不一致或变量没包含 | count by、变量 regex |
 | 最近 15 分钟空，1 天有 | 采集中断、时钟或时间范围 | timestamp、remote write |
@@ -701,6 +718,7 @@ count_over_time(postgresql_xact_commit{server="<ACTUAL_SERVER>",db="<ACTUAL_DB>"
 - 导入前记录 Dashboard 依赖的指标和变量标签；
 - 给多实例配置稳定的 `instance`、`cluster`、`env` 等标签；
 - 明确 `agent_hostname`、`ident`、`instance`、`server` 的职责；
+- 分别记录“经夜莺写入”和“直写 TSDB”时的最终标签，不能假定两条链路都存在 `ident`；
 - Dashboard 发布前分别在夜莺和 Grafana 测试，不混用 JSON；
 - 数据源、writer 和查询端统一记录集群与租户；
 - 变量尽量使用稳定、低基数的基准指标；

@@ -98,6 +98,8 @@ cd /opt/categraf
 1784500000 10:00:00 postgresql_up agent_hostname=monitor-01 server=127.0.0.1:5432 1
 ```
 
+这里的 `agent_hostname` 是 Categraf 用来标识自身的采集端标签。后续查询后端时要区分写入路径：经过夜莺接入且指标没有非空 `ident` 时，夜莺才会把 `agent_hostname` 重命名为 `ident`；如果指标已经带有非空 `ident`，显式 `ident` 优先，`agent_hostname` 保留。Categraf 直接写入 VictoriaMetrics 或其他 TSDB 时通常也保留 `agent_hostname`。因此不要把 `--test` 中的标签名机械复制到所有后端查询中，应以后端实际标签为准。
+
 重点观察三类内容：
 
 1. 是否出现 `input: local.postgresql started`；

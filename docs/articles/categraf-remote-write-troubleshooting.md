@@ -1,6 +1,6 @@
 ---
 title: "Categraf 已采到指标但后端查不到：remote write 链路排查"
-description: "本文介绍 Categraf 使用 test 模式确认采集、再用 debug 或正式模式验证写入，但夜莺、VictoriaMetrics 或 Prometheus 兼容后端仍查不到数据时的完整排查方法，覆盖运行模式、writer、内存队列、HTTP、认证、TLS、时间偏差、租户和查询端点。"
+description: "本文介绍 Categraf 使用 test 模式确认采集、再用 debug 或正式模式验证写入，但夜莺、VictoriaMetrics 或 Prometheus 兼容后端仍查不到数据时的完整排查方法，覆盖运行模式、writer、标签转换、内存队列、HTTP、认证、TLS、时间偏差、租户和查询端点。"
 image: "https://download.flashcat.cloud/blog-monitor-agent-categraf-introduction.svg"
 og_image: "https://download.flashcat.cloud/blog-monitor-agent-categraf-introduction.png"
 keywords: ["Categraf", "remote write", "夜莺", "VictoriaMetrics", "Prometheus", "writer", "监控排障"]
@@ -25,6 +25,7 @@ tags: ["Categraf", "Troubleshooting", "Remote Write"]
 - Metrics Agent 的 `[[writers]]` 使用进程内存队列，没有磁盘 WAL。当前实现取出一个批次后只发送一次，HTTP 失败的批次不会重新放回队列。
 - `categraf_metrics_enqueue_failed_*` 只统计队列已满导致的入队失败，不统计 HTTP 4xx、5xx、超时或 TLS 失败；远端发送错误要看 Categraf 本地日志。
 - heartbeat、Metrics writer、Prometheus Agent 的 `remote_write`、Logs Agent 的 `send_to` 是不同链路。心跳正常不能证明指标写入正常。
+- Categraf 使用 `agent_hostname` 标识自身。经过夜莺接入时，只有指标不存在非空 `ident`，夜莺才会把 `agent_hostname` 重命名为 `ident`；已有非空 `ident` 时，显式 `ident` 优先且 `agent_hostname` 保留。直写其他 TSDB 时通常也保留 `agent_hostname`。
 - HTTP 返回 2xx 但查不到时，优先检查写入租户与查询租户、查询端点、时间偏差、标签和指标名，而不是只检查网络。
 - 一个 batch 会并发发送给所有配置的 writer，并等待全部 writer 返回。任意 writer 长时间阻塞，都可能拖慢后续批次。
 
@@ -65,6 +66,16 @@ server: db.example.com:5432
 agent_hostname: monitor-01
 value: 1
 ```
+
+这里记录的是 **Categraf 采集端输出的标签**，不一定等于接收端最终保存的标签：
+
+| 写入路径 | 后端通常看到的主机标识标签 | 查询示例 |
+| --- | --- | --- |
+| Categraf -> 夜莺 -> TSDB，原指标没有非空 `ident` | `agent_hostname` 被重命名为 `ident` | `postgresql_up{ident="monitor-01"}` |
+| Categraf -> 夜莺 -> TSDB，原指标已有非空 `ident` | 显式 `ident` 优先，同时保留 `agent_hostname` | `postgresql_up{ident="<EXPLICIT_IDENT>",agent_hostname="monitor-01"}` |
+| Categraf -> VictoriaMetrics、Prometheus 兼容后端等 TSDB | 没有夜莺转换，通常保留 `agent_hostname` | `postgresql_up{agent_hostname="monitor-01"}` |
+
+因此，`--test` 中只出现 `agent_hostname="monitor-01"` 且没有非空 `ident` 时，经夜莺写入后应查 `ident="monitor-01"`。如果 test 已经出现非空 `ident`，经夜莺写入后应使用该显式值查询，同时还可以看到原 `agent_hostname`。直写其他 TSDB 时通常仍查 `agent_hostname="monitor-01"`。如果链路上还有 relabel 或网关转换，最终仍以后端实际返回的标签为准。
 
 第二步，退出 test 后，再选择一种真正会写入的方式。
 
@@ -663,13 +674,31 @@ chronyc tracking
 postgresql_up
 ```
 
-再按 test 中的真实标签过滤：
+然后先查看后端最终保存的标签，不要假定 `--test` 中的标签名会原样保留：
+
+```promql
+count by (agent_hostname, ident, instance, server) (postgresql_up)
+```
+
+如果 Categraf 经过夜莺接入，且原指标没有非空 `ident`，夜莺会把 `agent_hostname` 重命名为 `ident`，应查询：
+
+```promql
+postgresql_up{ident="monitor-01"}
+```
+
+如果原指标已经带有非空 `ident`，夜莺保留显式 `ident` 和 `agent_hostname`，可以查询：
+
+```promql
+postgresql_up{ident="<EXPLICIT_IDENT>",agent_hostname="monitor-01"}
+```
+
+如果 Categraf 直接写入 VictoriaMetrics 或其他 Prometheus 兼容 TSDB，没有经过夜莺的标签转换，则通常查询：
 
 ```promql
 postgresql_up{agent_hostname="monitor-01"}
 ```
 
-不要一开始复制 Dashboard 的复杂 PromQL。`metrics_name_prefix` 或 relabel 可能已经改变指标名。
+不要一开始复制 Dashboard 的复杂 PromQL。`metrics_name_prefix` 或 relabel 可能已经改变指标名，夜莺等接入层还可能改变标签名。
 
 ### 查询时间是否覆盖样本
 
