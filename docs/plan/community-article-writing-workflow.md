@@ -4,7 +4,7 @@
 
 ## 当前产出
 
-当前已经完成 17 篇文章：
+当前已经完成 20 篇文章：
 
 1. `what-is-categraf.md`
 2. `quickstart-categraf-nightingale-victoriametrics.md`
@@ -23,6 +23,9 @@
 15. `categraf-plugin-no-metrics-troubleshooting.md`
 16. `categraf-remote-write-troubleshooting.md`
 17. `categraf-dashboard-no-data-troubleshooting.md`
+18. `categraf-multi-instance-label-design.md`
+19. `categraf-systemd-container-deployment-pitfalls.md`
+20. `categraf-upgrade-rollback-practice.md`
 
 文章源文件维护在 Categraf 仓库：
 

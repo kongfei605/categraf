@@ -89,7 +89,7 @@
 2. `Categraf TCP/UDP 网络探测实战：端口连通性、响应时间和告警`
 3. `Categraf DNS 查询监控实战：解析结果、解析耗时和可用性`
 
-当前 3 篇探测类文章已完成。数据库深入系列中的 MongoDB 测试环境、MongoDB 监控实战和 PostgreSQL 监控实战均已完成。新手与排障补充系列已经完成配置、启动、采集、写入和 Dashboard 展示五篇文章；后续按既定顺序继续完成多实例与标签、systemd 与容器部署、升级与回滚 3 篇，再进入 Kafka、Elasticsearch、RabbitMQ、Kubernetes 等中间件系列。
+当前 3 篇探测类文章已完成。数据库深入系列中的 MongoDB 测试环境、MongoDB 监控实战和 PostgreSQL 监控实战均已完成。新手与排障补充系列已经完成配置、启动、采集、写入、Dashboard 展示、多实例标签、systemd 与容器部署、升级与回滚 8 篇；后续进入 Kafka、Elasticsearch、RabbitMQ、Kubernetes 等中间件系列。
 
 ## 第三阶段选题（数据库深入）
 
@@ -125,9 +125,9 @@ PostgreSQL 文章已完成 PostgreSQL 16 容器采集、夜莺 Dashboard 导入�
 | 3 | `Categraf 插件没有指标：从 test 模式到数据库权限的完整排查` | 插件启用、`[[instances]]`、`--inputs`、网络、认证、过滤条件和采集日志 | 已完成 |
 | 4 | `Categraf 已采到指标但后端查不到：remote write 链路排查` | writer 地址、发送队列、HTTP 状态、重试、网络、时间偏差、后端和数据源 | 已完成 |
 | 5 | `Categraf Dashboard 没有数据：数据源、变量、标签和 PromQL 排查` | 时间范围、数据源变量、实例标签、指标改名、PromQL 和 Dashboard 版本兼容 | 已完成 |
-| 6 | `Categraf 多实例配置与标签设计：如何避免实例混淆和高基数` | 多个 `[[instances]]`、稳定实例标识、`labels`、`outputaddress` 和高基数控制 | 待写 |
-| 7 | `Categraf 使用 systemd 和容器部署的常见坑` | 配置挂载、网络命名空间、容器内 `127.0.0.1`、权限、重启策略和日志持久化 | 待写 |
-| 8 | `Categraf 升级与回滚实践：配置备份、灰度验证和版本兼容` | 升级前备份、测试验证、插件配置差异、灰度节点、二进制与配置回滚 | 待写 |
+| 6 | `Categraf 多实例配置与标签设计：如何避免实例混淆和高基数` | 多个 `[[instances]]`、稳定实例标识、`labels`、`outputaddress` 和高基数控制 | 已完成 |
+| 7 | `Categraf 使用 systemd 和容器部署的常见坑` | 配置挂载、网络命名空间、容器内 `127.0.0.1`、权限、重启策略和日志持久化 | 已完成 |
+| 8 | `Categraf 升级与回滚实践：配置备份、灰度验证和版本兼容` | 升级前备份、测试验证、插件配置差异、灰度节点、二进制与配置回滚 | 已完成 |
 
 固定写作顺序：
 
@@ -142,7 +142,7 @@ PostgreSQL 文章已完成 PostgreSQL 16 容器采集、夜莺 Dashboard 导入�
   -> 升级与回滚
 ```
 
-前 4 篇构成第一批，已经打通“配置、启动、采集、写入”排障闭环；后 4 篇构成第二批，Dashboard 无数据排查已经完成，后续继续覆盖多实例、部署和升级维护。每完成一篇，就在上表中把状态更新为“已完成”，并同步更新 `community-article-writing-workflow.md` 的当前产出清单。
+前 4 篇构成第一批，已经打通“配置、启动、采集、写入”排障闭环；后 4 篇构成第二批，已经覆盖 Dashboard、多实例、部署和升级维护。新手与排障补充系列已完成，后续继续扩展中间件与 Kubernetes 系列。
 
 ## 第五阶段选题（中间件与 Kubernetes）
 

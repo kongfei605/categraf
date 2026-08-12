@@ -201,5 +201,8 @@ Categraf 可以理解为把很多常见 exporter 能力收敛到一个 agent 里
 - [Categraf 插件没有指标：从 test 模式到数据库权限的完整排查](/blog/categraf-plugin-no-metrics-troubleshooting/)
 - [Categraf 已采到指标但后端查不到：remote write 链路排查](/blog/categraf-remote-write-troubleshooting/)
 - [Categraf Dashboard 没有数据：数据源、变量、标签和 PromQL 排查](/blog/categraf-dashboard-no-data-troubleshooting/)
+- [Categraf 多实例配置与标签设计：如何避免实例混淆和高基数](/blog/categraf-multi-instance-label-design/)
+- [Categraf 使用 systemd 和容器部署的常见坑](/blog/categraf-systemd-container-deployment-pitfalls/)
+- [Categraf 升级与回滚实践：配置备份、灰度验证和版本兼容](/blog/categraf-upgrade-rollback-practice/)
 
 监控系统的价值，不在于组件名字有多复杂，而在于故障发生时能不能快速看到现象、定位原因、通知到人。Categraf 的目标就是把“采集”这件事做得更统一、更可维护，并且和 Dashboard、告警规则一起形成可复用的监控实践。
