@@ -89,7 +89,7 @@
 2. `Categraf TCP/UDP 网络探测实战：端口连通性、响应时间和告警`
 3. `Categraf DNS 查询监控实战：解析结果、解析耗时和可用性`
 
-当前 3 篇探测类文章已完成。数据库深入系列中的 MongoDB 测试环境、MongoDB 监控实战和 PostgreSQL 监控实战均已完成。新手与排障补充系列已经完成配置、启动、采集、写入、Dashboard 展示、多实例标签、systemd 与容器部署、升级与回滚 8 篇；后续进入 Kafka、Elasticsearch、RabbitMQ、Kubernetes 等中间件系列。
+当前 3 篇探测类文章已完成。数据库深入系列中的 MongoDB 测试环境、MongoDB 监控实战和 PostgreSQL 监控实战均已完成。新手与排障补充系列已经完成配置、启动、采集、写入、Dashboard 展示、多实例标签、systemd 与容器部署、升级与回滚 8 篇；后续先补 SNMP 监控系列，再进入 Kafka、Elasticsearch、RabbitMQ、Kubernetes 等中间件系列。
 
 ## 第三阶段选题（数据库深入）
 
@@ -142,11 +142,25 @@ PostgreSQL 文章已完成 PostgreSQL 16 容器采集、夜莺 Dashboard 导入�
   -> 升级与回滚
 ```
 
-前 4 篇构成第一批，已经打通“配置、启动、采集、写入”排障闭环；后 4 篇构成第二批，已经覆盖 Dashboard、多实例、部署和升级维护。新手与排障补充系列已完成，后续继续扩展中间件与 Kubernetes 系列。
+前 4 篇构成第一批，已经打通“配置、启动、采集、写入”排障闭环；后 4 篇构成第二批，已经覆盖 Dashboard、多实例、部署和升级维护。新手与排障补充系列已完成，后续先扩展 SNMP 监控系列，再继续扩展中间件与 Kubernetes 系列。
 
-## 第五阶段选题（中间件与 Kubernetes）
+## 第五阶段选题（SNMP 监控系列）
 
-新手与排障补充系列完成后，再继续扩展消息队列、搜索和 Kubernetes 等常见组件。
+新手与排障补充系列完成后，先把 SNMP 监控单独拆成一个小系列。SNMP 一直是社区配置门槛较高的场景，难点不只是 Categraf 配置语法，而是用户不知道不同设备应该监控哪些 OID、哪些指标真正有用、如何过滤无意义端口、表格采集缺字段时如何保证数据可用。近期 SNMP 插件完成了 `partial` 表格采集策略、依赖缓存、运行时健康状态和配置文档优化，也适合作为新版 SNMP 实战内容的传播点。
+
+| 顺序 | 文章选题 | 重点内容 | 状态 |
+| --- | --- | --- | --- |
+| 1 | `Categraf SNMP 交换机接口监控实战：端口流量、状态、错包和部分采集` | 交换机/路由器接口监控最小闭环，覆盖 `sysName`、`sysUpTime`、`ifDescr`、`ifName`、`ifAlias`、`ifAdminStatus`、`ifOperStatus`、`ifHighSpeed`、`ifHCInOctets`、`ifHCOutOctets`、`ifInErrors`、`ifOutErrors`、`ifInDiscards`、`ifOutDiscards`，以及端口过滤、Dashboard 和常见告警 | 已完成 |
+| 2 | `Categraf SNMP 表格采集进阶：table、field、标签继承、过滤和 partial 策略` | 讲清 `[[instances.table]]`、`[[instances.table.field]]`、`is_tag`、`inherit_tags`、`index_as_tag`、`filters`、`filters_expression`、`filters_mode`、`default_table_error_policy`、表级 `error_policy`、`dependency_cache_ttl` 和 `dependency_cache_max_entries` | 已完成 |
+| 3 | `Categraf SNMPv3 与批量设备配置实践：认证加密、多设备标签和采集规模控制` | SNMPv2c 与 SNMPv3 选择，`sec_name`、`sec_level`、`auth_protocol`、`priv_protocol` 配置，多 `agents`、`agent_host_tag`、设备标签、超时重试、GETBULK、并发和大规模设备采集建议 | 已完成 |
+| 4 | `Categraf SNMP 硬件与厂商私有 OID 监控：风扇、电源、温度、CPU 和内存` | 从通用 IF-MIB 扩展到设备硬件和厂商私有 MIB，讲 OID/MIB 查找、`snmpwalk` 验证、`convert_rule`、枚举值、离线值转换，以及风扇、电源、温度、CPU、内存、存储类指标的告警语义 | 已完成 |
+| 5 | `Categraf SNMP 采集排障指南：snmpwalk、MIB、超时、权限和 Dashboard 无数据` | SNMP 不通、community/SNMPv3 权限、UDP 超时、设备 ACL、OID 不存在、MIB 解析、表缺字段、`up`/`icmp_up`、`health_state`、partial 结果、remote write 和 Dashboard 无数据排查 | 已完成 |
+
+第一篇优先聚焦网络设备接口监控，不写成泛泛的插件介绍。文章必须回答“交换机端口到底应该采哪些指标、这些指标怎么配置、PromQL 怎么看、哪些端口应该过滤、告警应该关注什么”。第二篇再深入解释 SNMP 表格模型和新版 `partial` 能力，避免第一篇一次性塞入过多机制细节。当前 5 篇 SNMP 监控系列文章均已完成，后续进入中间件与 Kubernetes 系列。
+
+## 第六阶段选题（中间件与 Kubernetes）
+
+SNMP 小系列完成后，再继续扩展消息队列、搜索和 Kubernetes 等常见组件。
 
 1. `Categraf Kafka 监控实战：Broker、Topic、Consumer Lag 怎么看`
 2. `Categraf Elasticsearch 监控实战：集群健康、节点、索引和 JVM 指标`
@@ -183,5 +197,6 @@ PostgreSQL 文章已完成 PostgreSQL 16 容器采集、夜莺 Dashboard 导入�
 - 第二阶段完成 HTTP、TCP/UDP、DNS 三类探测文章。
 - 第三阶段优先完成 MongoDB 和 PostgreSQL 数据库深入文章。
 - 第四阶段依次完成 8 篇新手与排障补充文章，先完成配置、启动、采集、写入闭环，再覆盖 Dashboard、多实例、部署和升级。
-- 第五阶段围绕 Kafka、Elasticsearch、Kubernetes、RabbitMQ 等常见组件继续扩展。
+- 第五阶段优先完成 SNMP 监控小系列，先解决交换机接口监控、表格采集、SNMPv3、厂商私有 OID 和排障问题。
+- 第六阶段围绕 Kafka、Elasticsearch、Kubernetes、RabbitMQ 等常见组件继续扩展。
 - 再往后发布原理、性能、插件开发和生产实践文章，提升项目技术影响力。

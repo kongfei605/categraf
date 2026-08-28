@@ -204,5 +204,10 @@ Categraf 可以理解为把很多常见 exporter 能力收敛到一个 agent 里
 - [Categraf 多实例配置与标签设计：如何避免实例混淆和高基数](/blog/categraf-multi-instance-label-design/)
 - [Categraf 使用 systemd 和容器部署的常见坑](/blog/categraf-systemd-container-deployment-pitfalls/)
 - [Categraf 升级与回滚实践：配置备份、灰度验证和版本兼容](/blog/categraf-upgrade-rollback-practice/)
+- [Categraf SNMP 交换机接口监控实战：端口流量、状态、错包和部分采集](/blog/categraf-snmp-switch-interface-monitoring-practice/)
+- [Categraf SNMP 表格采集进阶：table、field、标签继承、过滤和 partial 策略](/blog/categraf-snmp-table-collection-practice/)
+- [Categraf SNMPv3 与批量设备配置实践：认证加密、多设备标签和采集规模控制](/blog/categraf-snmpv3-bulk-device-configuration-practice/)
+- [Categraf SNMP 硬件与厂商私有 OID 监控：风扇、电源、温度、CPU 和内存](/blog/categraf-snmp-hardware-private-oid-monitoring-practice/)
+- [Categraf SNMP 采集排障指南：snmpwalk、MIB、超时、权限和 Dashboard 无数据](/blog/categraf-snmp-collection-troubleshooting-guide/)
 
 监控系统的价值，不在于组件名字有多复杂，而在于故障发生时能不能快速看到现象、定位原因、通知到人。Categraf 的目标就是把“采集”这件事做得更统一、更可维护，并且和 Dashboard、告警规则一起形成可复用的监控实践。

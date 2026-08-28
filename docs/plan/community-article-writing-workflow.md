@@ -4,7 +4,7 @@
 
 ## 当前产出
 
-当前已经完成 20 篇文章：
+当前已经完成 25 篇文章：
 
 1. `what-is-categraf.md`
 2. `quickstart-categraf-nightingale-victoriametrics.md`
@@ -26,6 +26,11 @@
 18. `categraf-multi-instance-label-design.md`
 19. `categraf-systemd-container-deployment-pitfalls.md`
 20. `categraf-upgrade-rollback-practice.md`
+21. `categraf-snmp-switch-interface-monitoring-practice.md`
+22. `categraf-snmp-table-collection-practice.md`
+23. `categraf-snmpv3-bulk-device-configuration-practice.md`
+24. `categraf-snmp-hardware-private-oid-monitoring-practice.md`
+25. `categraf-snmp-collection-troubleshooting-guide.md`
 
 文章源文件维护在 Categraf 仓库：
 
@@ -76,6 +81,10 @@ docs/plan/community-article-update-and-publish-workflow.md
 3. 容易搭建测试环境并能截图的插件。
 4. 用户搜索意图明确的主题，比如“如何监控 MySQL”“HTTP 接口监控”“Redis Dashboard”。
 5. 能体现 Categraf 和夜莺、Grafana、VictoriaMetrics 协同能力的主题。
+
+阶段性前置规则：
+
+- 如果某个插件长期是社区配置难点，且近期有重要能力优化，可以优先插入专题系列，不必严格跟随原中间件排期。例如 SNMP 监控需要把设备类型、MIB/OID、表格采集、端口过滤、核心指标、Dashboard、告警和排障一起讲清楚，适合拆成多篇连续文章。
 
 每篇文章开始前先检查：
 
